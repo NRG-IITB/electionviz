@@ -30,17 +30,18 @@ try:
                 features_with_geometry.append(feature)
 
         # extract relevant data and create dataframe
+        pc_ids = [feature['properties']['pc_id'] for feature in features_with_geometry]
         pc_names = [feature['properties']['pc_name'] for feature in features_with_geometry]
         states = [feature['properties']['st_name'] for feature in features_with_geometry]
         phases = [str(feature['properties']['2019_election_phase']) for feature in features_with_geometry]
-        pc_df = pd.DataFrame({'pc_name': pc_names, 'st_name': states, DATA_COLUMN: phases})
+        pc_df = pd.DataFrame({'pc_id': pc_ids, 'pc_name': pc_names, 'st_name': states, DATA_COLUMN: phases})
         
         # create the map figure
         fig = px.choropleth(
             pc_df,
             geojson=geojson_data,
-            locations='pc_name',
-            featureidkey='properties.pc_name',
+            locations='pc_id',
+            featureidkey='properties.pc_id',
             color=DATA_COLUMN,
             category_orders={DATA_COLUMN: sorted(list(set(pc_df[DATA_COLUMN].tolist())), key=int)}, # sort phases numerically
             hover_data=['st_name', 'pc_name'],
