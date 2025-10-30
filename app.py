@@ -9,11 +9,10 @@ import plotly.express as px
 import json
 import pandas as pd
 
-# obtained from https://raw.githubusercontent.com/civictech-India/INDIA-GEO-JSON-Datasets/refs/heads/main/india_pc_2019.json
-GEOJSON_FILE_PATH = 'data/india_pc_2019.json' 
+GEOJSON_FILE_PATH = 'data/india_parliamentary_constituencies_2024.geojson' 
 
 # static data column for now
-DATA_COLUMN = 'Election Phase'
+DATA_COLUMN = 'State/UT'
 
 # parse geojson file and generate map before starting the server, reduces client-side load time
 try:
@@ -33,8 +32,7 @@ try:
         pc_ids = [feature['properties']['pc_id'] for feature in features_with_geometry]
         pc_names = [feature['properties']['pc_name'] for feature in features_with_geometry]
         states = [feature['properties']['st_name'] for feature in features_with_geometry]
-        phases = [str(feature['properties']['2019_election_phase']) for feature in features_with_geometry]
-        pc_df = pd.DataFrame({'pc_id': pc_ids, 'pc_name': pc_names, 'st_name': states, DATA_COLUMN: phases})
+        pc_df = pd.DataFrame({'pc_id': pc_ids, 'pc_name': pc_names, DATA_COLUMN: states})
         
         # create the map figure
         fig = px.choropleth(
@@ -43,9 +41,9 @@ try:
             locations='pc_id',
             featureidkey='properties.pc_id',
             color=DATA_COLUMN,
-            category_orders={DATA_COLUMN: sorted(list(set(pc_df[DATA_COLUMN].tolist())), key=int)}, # sort phases numerically
-            hover_data=['st_name', 'pc_name'],
-            title="Election phases (2019)"
+            category_orders={DATA_COLUMN: sorted(list(set(pc_df[DATA_COLUMN].tolist())))}, # sort state/UT names numerically
+            hover_data=[DATA_COLUMN, 'pc_name'],
+            title="States/UTs"
         )
 
         fig.update_geos(
@@ -56,6 +54,7 @@ try:
         fig.update_layout(height=700)
         
         FIGURE = fig.to_dict() # render figure once and store as dict
+        print('Rendered map')
 
 # handle errors
 except FileNotFoundError:
