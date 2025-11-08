@@ -119,8 +119,17 @@ for w in party_of_winners:
 for i in range(len(party_of_winners)):
     if party_wins[party_of_winners[i]] <= 5 and party_of_winners[i] != 'IND':
         party_of_winners[i] = 'Others'
+vote_share_of_winner = [pc['Result']['Winner']['Votes']*100/pc['Voters']['Total']['Total'] if pc['Voters'] else 100 for pc in ELECTION_DATA]
+nota_vote_share = []
+for pc in ELECTION_DATA:
+    nota_votes = 0
+    for candidate in pc['Candidates']:
+        if candidate['Candidate Name'] == 'NOTA':
+            nota_votes = candidate['% of Votes Secured']['Over Total Votes Polled In Constituency']
+            break
+    nota_vote_share.append(nota_votes)
 
-pc_df = pd.DataFrame({'pc_id': pc_ids, 'pc_name': pc_names, 'total_voter_turnout': total_voter_turnout, 'category': categories, 'winner_party': winners, 'margin': margins, 'male_voter_turnout': male_voter_turnout, 'female_voter_turnout': female_voter_turnout, 'gender_of_winner': gender_of_winners, 'category_of_winner': category_of_winners, 'party_of_winner': party_of_winners})
+pc_df = pd.DataFrame({'pc_id': pc_ids, 'pc_name': pc_names, 'total_voter_turnout': total_voter_turnout, 'category': categories, 'winner_party': winners, 'margin': margins, 'male_voter_turnout': male_voter_turnout, 'female_voter_turnout': female_voter_turnout, 'gender_of_winner': gender_of_winners, 'category_of_winner': category_of_winners, 'party_of_winner': party_of_winners, 'vote_share_of_winner': vote_share_of_winner, 'nota_vote_share': nota_vote_share})
 
 # manually create DataPoint instances for each plot and generate figures
 
@@ -155,6 +164,14 @@ FIGS['category_of_winner'] = winner_by_category_fig
 winner_by_party_fig = DataPoint(id="party_of_winner", title="Winners by Party", legend_label="Party", type=PlotType.MAP_CATEGORICAL)
 winner_by_party_fig.plot_fig(pc_df, 'party_of_winner')
 FIGS['party_of_winner'] = winner_by_party_fig
+
+winner_by_party_fig = DataPoint(id="vote_share_of_winner", title="Vote Share of Winner", legend_label="Vote share (%)", type=PlotType.MAP_CONTINUOUS)
+winner_by_party_fig.plot_fig(pc_df, 'vote_share_of_winner')
+FIGS['vote_share_of_winner'] = winner_by_party_fig
+
+winner_by_party_fig = DataPoint(id="nota_vote_share", title="NOTA Vote Share", legend_label="Vote share (%)", type=PlotType.MAP_CONTINUOUS)
+winner_by_party_fig.plot_fig(pc_df, 'nota_vote_share')
+FIGS['nota_vote_share'] = winner_by_party_fig
 
 
 # if code is run as a script, print success message
