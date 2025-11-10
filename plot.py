@@ -7,13 +7,94 @@ import plotly.express as px
 import json
 import pandas as pd
 
-# global constants and variables
 GEOJSON_FILE_PATH = 'data/india_parliamentary_constituencies_2024.geojson'
 ELECTION_DATA_FILE_PATH = 'data/2009-2024.json'
-GEOJSON_DATA = None
-ELECTION_DATA = None
 ELECTION_YEAR = '2024'
-FIGS = {} 
+FIGS = {}
+
+class ElectionDataProcessor:
+    def __init__(self, election_data_path, geojson_path, election_year):
+        self.ELECTION_YEAR = election_year
+        self.geojson_data = self._load_data(geojson_path)
+        self.raw_data = self._load_data(election_data_path)
+        self.pc_df = self._prepare_dataframe()
+
+    # helper function to get candidate details
+    def _get_candidate_detail(self, pc_data, year, detail_key):
+        try:
+            winner_name = pc_data[year]['Result']['Winner']['Candidates']
+            for candidate in pc_data[year]['Candidates']:
+                if candidate['Candidate Name'] == winner_name:
+                    return candidate.get(detail_key)
+        except (KeyError, TypeError):
+            return None
+        return None
+    
+    # helper function to get NOTA vote share
+    def _find_nota_vote_share(self, pc_year_data):
+        for candidate in pc_year_data.get('Candidates', []):
+            if candidate.get('Candidate Name') == 'NOTA':
+                votes_data = candidate.get('% of Votes Secured')
+                share = votes_data.get('Over Total Votes Polled In Constituency', 0)
+                return share
+        return 0
+
+    # helper function to load (Geo)JSON data
+    def _load_data(self, file_path):
+        try:
+            with open(file_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            raise e
+
+    def _prepare_dataframe(self):
+        data_list = []
+        for pc in self.raw_data:
+            pc_year_data = pc.get(self.ELECTION_YEAR, {})
+            result = pc_year_data.get('Result', {})
+            voters = pc_year_data.get('Voters', {})
+            electors = pc_year_data.get('Electors', {})
+
+            entry = {
+                'pc_id': pc['ID'],
+                'pc_name': pc['Constituency'],
+                'category': pc_year_data.get('Category'),
+                'total_voter_turnout': voters.get('POLLING PERCENTAGE', {}).get('Total', 100) if voters else 100,
+                'male_voter_turnout': (
+                    voters.get('General').get('Men') * 100 / electors.get('General').get('Men') if voters else 100
+                ),
+                'female_voter_turnout': (
+                    voters.get('General').get('Women') * 100 / electors.get('General').get('Women') if voters else 100
+                ),
+                'winner_party': result.get('Winner', {}).get('Party'),
+                'margin': (
+                    result.get('Margin', 0) * 100 / voters.get('Total').get('Total') if voters else 100
+                ),
+                'vote_share_of_winner': (
+                    result.get('Winner', {}).get('Votes', 0) * 100 / voters.get('Total').get('Total') if voters else 100
+                ),
+                'gender_of_winner': self._get_candidate_detail(pc, self.ELECTION_YEAR, 'Gender'),
+                'category_of_winner': self._get_candidate_detail(pc, self.ELECTION_YEAR, 'Category'),
+                'nota_vote_share': self._find_nota_vote_share(pc_year_data)
+            }
+            data_list.append(entry)
+
+        pc_df = pd.DataFrame(data_list)
+        
+        # avoid cluttering the party-wise plot with too many small parties
+        seats_by_party = {}
+        for party in pc_df['winner_party']:
+            if party:
+                seats_by_party[party] = seats_by_party.get(party, 0) + 1
+        cleaned_party_list = []
+        for party in pc_df['winner_party']:
+            if party and seats_by_party.get(party, 0) <= 5 and party != 'IND':
+                cleaned_party_list.append('Others')
+            else:
+                cleaned_party_list.append(party)
+        pc_df['party_of_winner'] = cleaned_party_list # new column to hold processed party info
+
+        return pc_df
 
 # enum for different types of plots, used to determine plotting method
 class PlotType(Enum):
@@ -23,39 +104,37 @@ class PlotType(Enum):
 
 # DataPoint class to encapsulate plot details and figure generation
 class DataPoint():
-    def __init__(self, id: str, title: str, legend_label: str, type: PlotType):
+    def __init__(self, id, title, legend_label, type, geojson_data):
         self.id = id
         self.title = title
         self.legend_label = legend_label
         self.type = type
-        self.fig = dict
-    
+        self.geojson_data = geojson_data
+        self.fig = None        
+
     def plot_fig(self, df, column):
         try:
+            common_args = {
+                'data_frame': df,
+                'geojson': self.geojson_data,
+                'locations': 'pc_id',
+                'featureidkey': 'properties.pc_id',
+                'color': column,
+                'hover_data': [column, 'pc_name'],
+                'title': self.title, 
+                'labels': {column: self.legend_label}
+            }
+
             if self.type == PlotType.MAP_CATEGORICAL:
                 fig = px.choropleth(
-                    df,
-                    geojson=GEOJSON_DATA,
-                    locations='pc_id',
-                    featureidkey='properties.pc_id',
-                    color=column,
-                    category_orders={column: sorted(list(set(df[column].tolist())))},
+                    **common_args,
+                    category_orders={column: sorted(list(set(df[column].dropna().tolist())))},
                     color_discrete_sequence=px.colors.qualitative.Light24,
-                    hover_data=[column, 'pc_name'],
-                    title=self.title, 
-                    labels={column: self.legend_label}
                 )
             elif self.type == PlotType.MAP_CONTINUOUS or self.type == PlotType.MAP_DISCRETE:
                 fig = px.choropleth(
-                    df,
-                    geojson=GEOJSON_DATA,
-                    locations='pc_id',
-                    featureidkey='properties.pc_id',
-                    color=column,
+                    **common_args,
                     color_continuous_scale="YlGnBu",
-                    hover_data=[column, 'pc_name'],
-                    title=self.title, 
-                    labels={column: self.legend_label}
                 )
             else:
                 raise ValueError("Invalid PlotType")
@@ -66,114 +145,38 @@ class DataPoint():
                 projection_scale=5.0 # default zoom
             )
             fig.update_layout(height=700)
-
             self.fig = fig.to_dict()
         except Exception as e:
             print(f"An error occurred during figure plotting: {e}")
             raise e
 
-# helper function to load (Geo)JSON data
-def load_data(file_path):
-    try:
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-    except Exception as e:
-        print(f"An error occurred during data loading: {e}")
-        raise e
-    return data
 
-# load data files
-GEOJSON_DATA = load_data(GEOJSON_FILE_PATH)
-ELECTION_DATA = load_data(ELECTION_DATA_FILE_PATH)
+# load data files and prepare DataFrame
+data_processor = ElectionDataProcessor(
+    ELECTION_DATA_FILE_PATH, 
+    GEOJSON_FILE_PATH, 
+    ELECTION_YEAR
+)
+pc_df = data_processor.pc_df
 
-# Parse election data and prepare DataFrame for plotting
-pc_ids = [pc['ID'] for pc in ELECTION_DATA]
-pc_names = [pc['Constituency'] for pc in ELECTION_DATA]
-total_voter_turnout = [pc[ELECTION_YEAR]['Voters']['POLLING PERCENTAGE']['Total'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
-male_voter_turnout = [pc[ELECTION_YEAR]['Voters']['General']['Men']*100/pc[ELECTION_YEAR]['Electors']['General']['Men'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
-female_voter_turnout = [pc[ELECTION_YEAR]['Voters']['General']['Women']*100/pc[ELECTION_YEAR]['Electors']['General']['Women'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
-categories = [pc[ELECTION_YEAR]['Category'] for pc in ELECTION_DATA]
-winners = [pc[ELECTION_YEAR]['Result']['Winner']['Party'] for pc in ELECTION_DATA]
-margins = [pc[ELECTION_YEAR]['Result']['Margin']*100/pc[ELECTION_YEAR]['Voters']['Total']['Total'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
-gender_of_winners = []
-for pc in ELECTION_DATA:
-    winner = pc[ELECTION_YEAR]['Result']['Winner']['Candidates']
-    for candidate in pc[ELECTION_YEAR]['Candidates']:
-        if candidate['Candidate Name'] == winner:
-            gender_of_winners.append(candidate['Gender'])
-            break
-category_of_winners = []
-for pc in ELECTION_DATA:
-    winner = pc[ELECTION_YEAR]['Result']['Winner']['Candidates']
-    for candidate in pc[ELECTION_YEAR]['Candidates']:
-        if candidate['Candidate Name'] == winner:
-            category_of_winners.append(candidate['Category'])
-            break
-party_of_winners = [pc[ELECTION_YEAR]['Result']['Winner']['Party'] for pc in ELECTION_DATA]
-party_wins = {}
-for w in party_of_winners:
-    if w in party_wins:
-        party_wins[w] += 1
-    else:
-        party_wins[w] = 1
-# avoid cluttering the party-wise plot with too many small parties
-for i in range(len(party_of_winners)):
-    if party_wins[party_of_winners[i]] <= 5 and party_of_winners[i] != 'IND':
-        party_of_winners[i] = 'Others'
-vote_share_of_winner = [pc[ELECTION_YEAR]['Result']['Winner']['Votes']*100/pc[ELECTION_YEAR]['Voters']['Total']['Total'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
-nota_vote_share = []
-for pc in ELECTION_DATA:
-    nota_votes = 0
-    for candidate in pc[ELECTION_YEAR]['Candidates']:
-        if candidate['Candidate Name'] == 'NOTA':
-            nota_votes = candidate['% of Votes Secured']['Over Total Votes Polled In Constituency']
-            break
-    nota_vote_share.append(nota_votes)
+# create DataPoint instances for each plot and generate figures
+plot_configs = [
+    {"id": "total_voter_turnout", "title": "Total Voter Turnout", "legend_label": "Voter Turnout (%)", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "male_voter_turnout", "title": "Male Voter Turnout", "legend_label": "Voter Turnout (%)", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "female_voter_turnout", "title": "Female Voter Turnout", "legend_label": "Voter Turnout (%)", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "category", "title": "Seats by Reservation Category", "legend_label": "Category", "type": PlotType.MAP_CATEGORICAL},
+    {"id": "gender_of_winner", "title": "Winners by Gender", "legend_label": "Gender", "type": PlotType.MAP_CATEGORICAL},
+    {"id": "category_of_winner", "title": "Winners by Category", "legend_label": "Category", "type": PlotType.MAP_CATEGORICAL},
+    {"id": "party_of_winner", "title": "Winners by Party", "legend_label": "Party", "type": PlotType.MAP_CATEGORICAL},
+    {"id": "margin", "title": "Winning Margins", "legend_label": "Winning Margin (%)", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "vote_share_of_winner", "title": "Vote Share of Winner", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "nota_vote_share", "title": "NOTA Vote Share", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
+]
 
-pc_df = pd.DataFrame({'pc_id': pc_ids, 'pc_name': pc_names, 'total_voter_turnout': total_voter_turnout, 'category': categories, 'winner_party': winners, 'margin': margins, 'male_voter_turnout': male_voter_turnout, 'female_voter_turnout': female_voter_turnout, 'gender_of_winner': gender_of_winners, 'category_of_winner': category_of_winners, 'party_of_winner': party_of_winners, 'vote_share_of_winner': vote_share_of_winner, 'nota_vote_share': nota_vote_share})
-
-# manually create DataPoint instances for each plot and generate figures
-
-voter_turnout_fig = DataPoint(id="total_voter_turnout", title="Total Voter Turnout", legend_label="Voter Turnout (%)", type=PlotType.MAP_CONTINUOUS)
-voter_turnout_fig.plot_fig(pc_df, 'total_voter_turnout')
-FIGS['total_voter_turnout'] = voter_turnout_fig
-
-male_voter_turnout_fig = DataPoint(id="male_voter_turnout", title="Male Voter Turnout", legend_label="Voter Turnout (%)", type=PlotType.MAP_CONTINUOUS)
-male_voter_turnout_fig.plot_fig(pc_df, 'male_voter_turnout')
-FIGS['male_voter_turnout'] = male_voter_turnout_fig
-
-female_voter_turnout_fig = DataPoint(id="female_voter_turnout", title="Female Voter Turnout", legend_label="Voter Turnout (%)", type=PlotType.MAP_CONTINUOUS)
-female_voter_turnout_fig.plot_fig(pc_df, 'female_voter_turnout')
-FIGS['female_voter_turnout'] = female_voter_turnout_fig
-
-category_fig = DataPoint(id="category", title="Seats by Reservation Category", legend_label="Category", type=PlotType.MAP_CATEGORICAL)
-category_fig.plot_fig(pc_df, 'category')
-FIGS['category'] = category_fig
-
-margins_fig = DataPoint(id="margin", title="Winning Margins", legend_label="Winning Margin (%)", type=PlotType.MAP_CONTINUOUS)
-margins_fig.plot_fig(pc_df, 'margin')
-FIGS['margin'] = margins_fig
-
-winner_by_gender_fig = DataPoint(id="gender_of_winner", title="Winners by Gender", legend_label="Gender", type=PlotType.MAP_CATEGORICAL)
-winner_by_gender_fig.plot_fig(pc_df, 'gender_of_winner')
-FIGS['gender_of_winner'] = winner_by_gender_fig
-
-winner_by_category_fig = DataPoint(id="category_of_winner", title="Winners by Category", legend_label="Category", type=PlotType.MAP_CATEGORICAL)
-winner_by_category_fig.plot_fig(pc_df, 'category_of_winner')
-FIGS['category_of_winner'] = winner_by_category_fig
-
-winner_by_party_fig = DataPoint(id="party_of_winner", title="Winners by Party", legend_label="Party", type=PlotType.MAP_CATEGORICAL)
-winner_by_party_fig.plot_fig(pc_df, 'party_of_winner')
-FIGS['party_of_winner'] = winner_by_party_fig
-
-winner_by_party_fig = DataPoint(id="vote_share_of_winner", title="Vote Share of Winner", legend_label="Vote share (%)", type=PlotType.MAP_CONTINUOUS)
-winner_by_party_fig.plot_fig(pc_df, 'vote_share_of_winner')
-FIGS['vote_share_of_winner'] = winner_by_party_fig
-
-winner_by_party_fig = DataPoint(id="nota_vote_share", title="NOTA Vote Share", legend_label="Vote share (%)", type=PlotType.MAP_CONTINUOUS)
-winner_by_party_fig.plot_fig(pc_df, 'nota_vote_share')
-FIGS['nota_vote_share'] = winner_by_party_fig
-
+for config in plot_configs:
+    fig = DataPoint(**config, geojson_data=data_processor.geojson_data)
+    fig.plot_fig(pc_df, config['id'])
+    FIGS[config['id']] = fig
 
 # if code is run as a script, print success message
 if __name__ == '__main__':
