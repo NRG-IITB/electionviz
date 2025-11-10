@@ -9,9 +9,10 @@ import pandas as pd
 
 # global constants and variables
 GEOJSON_FILE_PATH = 'data/india_parliamentary_constituencies_2024.geojson'
-ELECTION_DATA_FILE_PATH = 'data/2024.json'
+ELECTION_DATA_FILE_PATH = 'data/2009-2024.json'
 GEOJSON_DATA = None
 ELECTION_DATA = None
+ELECTION_YEAR = '2024'
 FIGS = {} 
 
 # enum for different types of plots, used to determine plotting method
@@ -88,27 +89,27 @@ ELECTION_DATA = load_data(ELECTION_DATA_FILE_PATH)
 # Parse election data and prepare DataFrame for plotting
 pc_ids = [pc['ID'] for pc in ELECTION_DATA]
 pc_names = [pc['Constituency'] for pc in ELECTION_DATA]
-total_voter_turnout = [pc['Voters']['POLLING PERCENTAGE']['Total'] if pc['Voters'] else 100 for pc in ELECTION_DATA]
-male_voter_turnout = [pc['Voters']['General']['Men']*100/pc['Electors']['General']['Men'] if pc['Voters'] else 100 for pc in ELECTION_DATA]
-female_voter_turnout = [pc['Voters']['General']['Women']*100/pc['Electors']['General']['Women'] if pc['Voters'] else 100 for pc in ELECTION_DATA]
-categories = [pc['Category'] for pc in ELECTION_DATA]
-winners = [pc['Result']['Winner']['Party'] for pc in ELECTION_DATA]
-margins = [pc['Result']['Margin']*100/pc['Voters']['Total']['Total'] if pc['Voters'] else 100 for pc in ELECTION_DATA]
+total_voter_turnout = [pc[ELECTION_YEAR]['Voters']['POLLING PERCENTAGE']['Total'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
+male_voter_turnout = [pc[ELECTION_YEAR]['Voters']['General']['Men']*100/pc[ELECTION_YEAR]['Electors']['General']['Men'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
+female_voter_turnout = [pc[ELECTION_YEAR]['Voters']['General']['Women']*100/pc[ELECTION_YEAR]['Electors']['General']['Women'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
+categories = [pc[ELECTION_YEAR]['Category'] for pc in ELECTION_DATA]
+winners = [pc[ELECTION_YEAR]['Result']['Winner']['Party'] for pc in ELECTION_DATA]
+margins = [pc[ELECTION_YEAR]['Result']['Margin']*100/pc[ELECTION_YEAR]['Voters']['Total']['Total'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
 gender_of_winners = []
 for pc in ELECTION_DATA:
-    winner = pc['Result']['Winner']['Candidates']
-    for candidate in pc['Candidates']:
+    winner = pc[ELECTION_YEAR]['Result']['Winner']['Candidates']
+    for candidate in pc[ELECTION_YEAR]['Candidates']:
         if candidate['Candidate Name'] == winner:
             gender_of_winners.append(candidate['Gender'])
             break
 category_of_winners = []
 for pc in ELECTION_DATA:
-    winner = pc['Result']['Winner']['Candidates']
-    for candidate in pc['Candidates']:
+    winner = pc[ELECTION_YEAR]['Result']['Winner']['Candidates']
+    for candidate in pc[ELECTION_YEAR]['Candidates']:
         if candidate['Candidate Name'] == winner:
             category_of_winners.append(candidate['Category'])
             break
-party_of_winners = [pc['Result']['Winner']['Party'] for pc in ELECTION_DATA]
+party_of_winners = [pc[ELECTION_YEAR]['Result']['Winner']['Party'] for pc in ELECTION_DATA]
 party_wins = {}
 for w in party_of_winners:
     if w in party_wins:
@@ -119,11 +120,11 @@ for w in party_of_winners:
 for i in range(len(party_of_winners)):
     if party_wins[party_of_winners[i]] <= 5 and party_of_winners[i] != 'IND':
         party_of_winners[i] = 'Others'
-vote_share_of_winner = [pc['Result']['Winner']['Votes']*100/pc['Voters']['Total']['Total'] if pc['Voters'] else 100 for pc in ELECTION_DATA]
+vote_share_of_winner = [pc[ELECTION_YEAR]['Result']['Winner']['Votes']*100/pc[ELECTION_YEAR]['Voters']['Total']['Total'] if pc[ELECTION_YEAR]['Voters'] else 100 for pc in ELECTION_DATA]
 nota_vote_share = []
 for pc in ELECTION_DATA:
     nota_votes = 0
-    for candidate in pc['Candidates']:
+    for candidate in pc[ELECTION_YEAR]['Candidates']:
         if candidate['Candidate Name'] == 'NOTA':
             nota_votes = candidate['% of Votes Secured']['Over Total Votes Polled In Constituency']
             break
