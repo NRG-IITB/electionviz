@@ -6,13 +6,28 @@ Usage: python3 app.py
 import dash
 from dash import dcc, html, callback
 from dash.dependencies import Input, Output
-from plot import FIGS
+from plot import FIGS, ELECTION_YEARS 
 
-# get list of available plots for dropdown
-plot_options = [{'label': dp.title, 'value': dp_id} for dp_id, dp in FIGS.items()]
+year_options = []
+plot_options = []
+default_year = None
+default_plot_id = "party_of_winner"
 
-# default plot is "Winners by Party" for now
-default_plot_id = FIGS["party_of_winner"].id
+if ELECTION_YEARS and FIGS:
+    year_options = [{'label': year, 'value': year} for year in ELECTION_YEARS]
+    default_year = ELECTION_YEARS[-1]
+
+    if default_year in FIGS:
+        plot_options = [
+            {'label': dp.title, 'value': dp_id} 
+            for dp_id, dp in FIGS[default_year].items()
+        ]
+    
+    if not any(opt['value'] == default_plot_id for opt in plot_options) and plot_options:
+            default_plot_id = plot_options[0]['value']
+        
+else:
+    print("Warning: No data found in plot.py. FIGS or ELECTION_YEARS is empty.")
 
 app = dash.Dash(__name__)
 
@@ -22,6 +37,17 @@ app.layout = html.Div(children=[
         "Election Viz",
         style={'textAlign': 'center', 'color': '#333', 'padding': '10px'}
     ),
+    
+    html.Div([
+        html.Label("Select Year:"),
+        dcc.Dropdown(
+            id='year-dropdown',
+            options=year_options,
+            value=default_year,
+            clearable=False,
+            style={'width': '80%', 'margin': '10px auto'}
+        ),
+    ], style={'textAlign': 'center'}),
     
     html.Div([
         html.Label("Select Data Point to Visualize:"),
@@ -45,14 +71,15 @@ app.layout = html.Div(children=[
     )
 ])
 
-# callback to update graph based on dropdown selection
+# callback to update graph based on BOTH dropdowns
 @callback(
     Output('map-graph', 'figure'),
-    [Input('plot-dropdown', 'value')]
+    [Input('year-dropdown', 'value'),
+     Input('plot-dropdown', 'value')]
 )
-def update_graph(selected_plot_id):
-    if selected_plot_id in FIGS:
-        return FIGS[selected_plot_id].fig
+def update_graph(selected_year, selected_plot_id):
+    if selected_year in FIGS and selected_plot_id in FIGS[selected_year]:
+        return FIGS[selected_year][selected_plot_id].fig
     
     # return empty figure if plot id not found
     return {}

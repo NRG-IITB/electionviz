@@ -9,12 +9,11 @@ import pandas as pd
 
 GEOJSON_FILE_PATH = 'data/india_parliamentary_constituencies_2024.geojson'
 ELECTION_DATA_FILE_PATH = 'data/2009-2024.json'
-ELECTION_YEAR = '2024'
+ELECTION_YEARS = ['2009', '2019', '2024'] # skip 2014 for now
 FIGS = {}
 
 class ElectionDataProcessor:
-    def __init__(self, election_data_path, geojson_path, election_year):
-        self.ELECTION_YEAR = election_year
+    def __init__(self, election_data_path, geojson_path):
         self.geojson_data = self._load_data(geojson_path)
         self.raw_data = self._load_data(election_data_path)
         self.pc_df = self._prepare_dataframe()
@@ -50,49 +49,62 @@ class ElectionDataProcessor:
     def _prepare_dataframe(self):
         data_list = []
         for pc in self.raw_data:
-            pc_year_data = pc.get(self.ELECTION_YEAR, {})
-            result = pc_year_data.get('Result', {})
-            voters = pc_year_data.get('Voters', {})
-            electors = pc_year_data.get('Electors', {})
+            for year in ELECTION_YEARS:
+                pc_year_data = pc.get(year, {})
+                
+                result = pc_year_data.get('Result', {})
+                voters = pc_year_data.get('Voters', {})
+                electors = pc_year_data.get('Electors', {})
 
-            entry = {
-                'pc_id': pc['ID'],
-                'pc_name': pc['Constituency'],
-                'category': pc_year_data.get('Category'),
-                'total_voter_turnout': voters.get('POLLING PERCENTAGE', {}).get('Total', 100) if voters else 100,
-                'male_voter_turnout': (
-                    voters.get('General').get('Men') * 100 / electors.get('General').get('Men') if voters else 100
-                ),
-                'female_voter_turnout': (
-                    voters.get('General').get('Women') * 100 / electors.get('General').get('Women') if voters else 100
-                ),
-                'winner_party': result.get('Winner', {}).get('Party'),
-                'margin': (
-                    result.get('Margin', 0) * 100 / voters.get('Total').get('Total') if voters else 100
-                ),
-                'vote_share_of_winner': (
-                    result.get('Winner', {}).get('Votes', 0) * 100 / voters.get('Total').get('Total') if voters else 100
-                ),
-                'gender_of_winner': self._get_candidate_detail(pc, self.ELECTION_YEAR, 'Gender'),
-                'category_of_winner': self._get_candidate_detail(pc, self.ELECTION_YEAR, 'Category'),
-                'nota_vote_share': self._find_nota_vote_share(pc_year_data)
-            }
-            data_list.append(entry)
+                entry = {
+                    'year': year,
+                    'pc_id': pc['ID'],
+                    'pc_name': pc['Constituency'],
+                    'category': pc_year_data.get('Category'),
+                    'total_voter_turnout': voters.get('POLLING PERCENTAGE', {}).get('Total', 100) if voters else 100,
+                    'male_voter_turnout': (
+                        voters.get('General').get('Men') * 100 / electors.get('General').get('Men') if voters and electors else 100
+                    ),
+                    'female_voter_turnout': (
+                        voters.get('General').get('Women') * 100 / electors.get('General').get('Women') if voters and electors else 100
+                    ),
+                    'winner_party': result.get('Winner', {}).get('Party'),
+                    'margin': (
+                        result.get('Margin', 0) * 100 / voters.get('Total').get('Total') if voters else 100
+                    ),
+                    'vote_share_of_winner': (
+                        result.get('Winner', {}).get('Votes', 0) * 100 / voters.get('Total').get('Total') if voters else 100
+                    ),
+                    'gender_of_winner': self._get_candidate_detail(pc, year, 'Gender'),
+                    'category_of_winner': self._get_candidate_detail(pc, year, 'Category'),
+                    'nota_vote_share': self._find_nota_vote_share(pc_year_data)
+                }
+                data_list.append(entry)
 
         pc_df = pd.DataFrame(data_list)
-        
-        # avoid cluttering the party-wise plot with too many small parties
-        seats_by_party = {}
-        for party in pc_df['winner_party']:
+        if pc_df.empty:
+            return pc_df
+
+        seats_by_party_per_year = {}
+        for year in ELECTION_YEARS:
+            seats_by_party_per_year[year] = {}
+        for _, row in pc_df.iterrows():
+            party = row['winner_party']
+            year = row['year']
             if party:
-                seats_by_party[party] = seats_by_party.get(party, 0) + 1
+                current_counts = seats_by_party_per_year[year]
+                current_counts[party] = current_counts.get(party, 0) + 1
         cleaned_party_list = []
-        for party in pc_df['winner_party']:
-            if party and seats_by_party.get(party, 0) <= 5 and party != 'IND':
+        for _, row in pc_df.iterrows():
+            party = row['winner_party']
+            year = row['year']
+            if party and seats_by_party_per_year[year].get(party, 0) <= 5 and party != 'IND':
                 cleaned_party_list.append('Others')
             else:
                 cleaned_party_list.append(party)
-        pc_df['party_of_winner'] = cleaned_party_list # new column to hold processed party info
+        pc_df['party_of_winner'] = cleaned_party_list 
+        pc_df.set_index(['year', 'pc_id'], inplace=True)
+        pc_df.sort_index(inplace=True)
 
         return pc_df
 
@@ -110,7 +122,7 @@ class DataPoint():
         self.legend_label = legend_label
         self.type = type
         self.geojson_data = geojson_data
-        self.fig = None        
+        self.fig = None 
 
     def plot_fig(self, df, column):
         try:
@@ -154,8 +166,7 @@ class DataPoint():
 # load data files and prepare DataFrame
 data_processor = ElectionDataProcessor(
     ELECTION_DATA_FILE_PATH, 
-    GEOJSON_FILE_PATH, 
-    ELECTION_YEAR
+    GEOJSON_FILE_PATH
 )
 pc_df = data_processor.pc_df
 
@@ -173,12 +184,23 @@ plot_configs = [
     {"id": "nota_vote_share", "title": "NOTA Vote Share", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
 ]
 
-for config in plot_configs:
-    fig = DataPoint(**config, geojson_data=data_processor.geojson_data)
-    fig.plot_fig(pc_df, config['id'])
-    FIGS[config['id']] = fig
+for year in ELECTION_YEARS:
+    FIGS[year] = {}
+    
+    year_df = pc_df.loc[year].reset_index()
+    for config in plot_configs:
+        config_with_year = config.copy()
+        config_with_year['title'] = f"{config['title']}"
+        
+        fig = DataPoint(**config_with_year, geojson_data=data_processor.geojson_data)
+        if config['id'] not in year_df.columns:
+            print(f"  Warning: Column '{config['id']}' not found for {year}. Skipping this plot.")
+            continue
+
+        fig.plot_fig(year_df, config['id'])
+        FIGS[year][config['id']] = fig
 
 # if code is run as a script, print success message
 if __name__ == '__main__':
     print('All figures generated successfully.')
-    print('Import this module to access the FIGS dictionary.')
+    print('Import this module to access the FIGS dictionary (nested by year).')
