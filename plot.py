@@ -21,21 +21,27 @@ class ElectionDataProcessor:
     # helper function to get candidate details
     def _get_candidate_detail(self, pc_data, year, detail_key):
         try:
-            winner_name = pc_data[year]['Result']['Winner']['Candidates']
-            for candidate in pc_data[year]['Candidates']:
+            year_data = pc_data.get(year, {})
+            if not year_data: return None
+
+            winner_name = year_data['Result']['Winner']['Candidates']
+            for candidate in year_data['Candidates']:
                 if candidate['Candidate Name'] == winner_name:
                     return candidate.get(detail_key)
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, AttributeError): # handle cases where Result, Winner, or Candidates is missing
             return None
         return None
     
     # helper function to get NOTA vote share
     def _find_nota_vote_share(self, pc_year_data):
-        for candidate in pc_year_data.get('Candidates', []):
-            if candidate.get('Candidate Name') == 'NOTA':
-                votes_data = candidate.get('% of Votes Secured')
-                share = votes_data.get('Over Total Votes Polled In Constituency', 0)
-                return share
+        try:
+            for candidate in pc_year_data.get('Candidates', []):
+                if candidate.get('Candidate Name') == 'NOTA':
+                    votes_data = candidate.get('% of Votes Secured') or {} # '% of Votes Secured' can be None if winner was unopposed
+                    share = votes_data.get('Over Total Votes Polled In Constituency', 0)
+                    return share
+        except (KeyError, TypeError, AttributeError):
+            return 0 # return 0 if data is corrupted or missing
         return 0
 
     # helper function to load (Geo)JSON data
@@ -51,30 +57,55 @@ class ElectionDataProcessor:
         for pc in self.raw_data:
             for year in ELECTION_YEARS:
                 pc_year_data = pc.get(year, {})
+                if not pc_year_data:
+                    continue # skip if no data for this year
                 
-                result = pc_year_data.get('Result', {})
-                voters = pc_year_data.get('Voters', {})
-                electors = pc_year_data.get('Electors', {})
+                # default to {} to prevent errors on None/null
+                result = pc_year_data.get('Result', {}) or {}
+                voters = pc_year_data.get('Voters') # can be None if winner was unopposed
+                electors = pc_year_data.get('Electors') or {}
+                voters_general = voters.get('General', {}) if voters else {}
+                electors_general = electors.get('General', {}) or {}
+                voters_total_dict = voters.get('Total', {}) if voters else {}
+                
+                # default to 0 if None
+                men_voters = voters_general.get('Men') or 0
+                men_electors = electors_general.get('Men') or 1 # use 1 to avoid div/0
+                
+                women_voters = voters_general.get('Women') or 0
+                women_electors = electors_general.get('Women') or 1
+                
+                margin_val = result.get('Margin') or 0
+                total_polled = voters_total_dict.get('Total') or 0
+                
+                winner_votes = (result.get('Winner', {}) or {}).get('Votes') or 0
+                
+                polling_percent = 0
+                if voters and voters.get('POLLING PERCENTAGE'):
+                    polling_percent = voters.get('POLLING PERCENTAGE').get('Total', 0)
 
                 entry = {
                     'year': year,
                     'pc_id': pc['ID'],
                     'pc_name': pc['Constituency'],
                     'category': pc_year_data.get('Category'),
-                    'total_voter_turnout': voters.get('POLLING PERCENTAGE', {}).get('Total', 100) if voters else 100,
-                    'male_voter_turnout': (
-                        voters.get('General').get('Men') * 100 / electors.get('General').get('Men') if voters and electors else 100
-                    ),
-                    'female_voter_turnout': (
-                        voters.get('General').get('Women') * 100 / electors.get('General').get('Women') if voters and electors else 100
-                    ),
-                    'winner_party': result.get('Winner', {}).get('Party'),
-                    'margin': (
-                        result.get('Margin', 0) * 100 / voters.get('Total').get('Total') if voters else 100
-                    ),
-                    'vote_share_of_winner': (
-                        result.get('Winner', {}).get('Votes', 0) * 100 / voters.get('Total').get('Total') if voters else 100
-                    ),
+                    
+                    'total_voter_turnout': polling_percent,
+                    
+                    'male_voter_turnout': (men_voters * 100 / men_electors) 
+                        if men_electors > 0 else 0,
+                        
+                    'female_voter_turnout': (women_voters * 100 / women_electors) 
+                        if women_electors > 0 else 0,
+                        
+                    'winner_party': (result.get('Winner', {}) or {}).get('Party'),
+                    
+                    'margin': (margin_val * 100 / total_polled) 
+                        if total_polled > 0 else 0,
+                        
+                    'vote_share_of_winner': (winner_votes * 100 / total_polled) 
+                        if total_polled > 0 else 0,
+                        
                     'gender_of_winner': self._get_candidate_detail(pc, year, 'Gender'),
                     'category_of_winner': self._get_candidate_detail(pc, year, 'Category'),
                     'nota_vote_share': self._find_nota_vote_share(pc_year_data)
@@ -93,12 +124,14 @@ class ElectionDataProcessor:
             year = row['year']
             if party:
                 current_counts = seats_by_party_per_year[year]
-                current_counts[party] = current_counts.get(party, 0) + 1
+                current_counts[party] = current_counts.get(party, 0) + 1     
         cleaned_party_list = []
         for _, row in pc_df.iterrows():
             party = row['winner_party']
             year = row['year']
-            if party and seats_by_party_per_year[year].get(party, 0) <= 5 and party != 'IND':
+            party_count = seats_by_party_per_year[year].get(party, 0)
+            
+            if party and party_count <= 5 and party != 'IND':
                 cleaned_party_list.append('Others')
             else:
                 cleaned_party_list.append(party)
@@ -184,23 +217,31 @@ plot_configs = [
     {"id": "nota_vote_share", "title": "NOTA Vote Share", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
 ]
 
-for year in ELECTION_YEARS:
-    FIGS[year] = {}
-    
-    year_df = pc_df.loc[year].reset_index()
-    for config in plot_configs:
-        config_with_year = config.copy()
-        config_with_year['title'] = f"{config['title']}"
+if not pc_df.empty:
+    for year in ELECTION_YEARS:
+        FIGS[year] = {}
         
-        fig = DataPoint(**config_with_year, geojson_data=data_processor.geojson_data)
-        if config['id'] not in year_df.columns:
-            print(f"  Warning: Column '{config['id']}' not found for {year}. Skipping this plot.")
+        # check if year exists in the index
+        if year not in pc_df.index.get_level_values('year'):
+            print(f"No data for year {year}, skipping.")
             continue
+            
+        year_df = pc_df.loc[year].reset_index()
+        for config in plot_configs:
+            config_with_year = config.copy()
+            config_with_year['title'] = f"{config['title']}"
+            
+            fig = DataPoint(**config_with_year, geojson_data=data_processor.geojson_data)
+            
+            # check for missing data
+            if config['id'] not in year_df.columns or year_df[config['id']].isnull().all():
+                print(f"Warning: Column '{config['id']}' not found or is all null for {year}. Skipping this plot.")
+                continue
 
-        fig.plot_fig(year_df, config['id'])
-        FIGS[year][config['id']] = fig
+            fig.plot_fig(year_df, config['id'])
+            FIGS[year][config['id']] = fig
 
 # if code is run as a script, print success message
 if __name__ == '__main__':
     print('All figures generated successfully.')
-    print('Import this module to access the FIGS dictionary (nested by year).')
+    print('Import this module to access the FIGS dictionary (nested by year + "all_years").')
