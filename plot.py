@@ -43,6 +43,37 @@ class ElectionDataProcessor:
         except (KeyError, TypeError, AttributeError):
             return 0 # return 0 if data is corrupted or missing
         return 0
+    
+    # helper function to clean party names
+    def _clean_party_names(self, df, column_name):
+        if column_name not in df.columns:
+            return # skip if column doesn't exist
+
+        seats_by_party_per_year = {}
+        for year in ELECTION_YEARS:
+            seats_by_party_per_year[year] = {}
+        
+        for _, row in df.iterrows():
+            party = row[column_name]
+            year = row['year']
+            if party:
+                current_counts = seats_by_party_per_year[year]
+                current_counts[party] = current_counts.get(party, 0) + 1
+        
+        cleaned_list = []
+        for _, row in df.iterrows():
+            party = row[column_name]
+            year = row['year']
+            party_count = seats_by_party_per_year[year].get(party, 0)
+            
+            if party == 'None (Unopposed)':
+                cleaned_list.append(party)
+            elif party and party_count <= 5 and party != 'IND':
+                cleaned_list.append('Others')
+            else:
+                cleaned_list.append(party)
+        
+        df[column_name] = cleaned_list
 
     # helper function to load (Geo)JSON data
     def _load_data(self, file_path):
@@ -64,11 +95,12 @@ class ElectionDataProcessor:
                 result = pc_year_data.get('Result', {}) or {}
                 voters = pc_year_data.get('Voters') # can be None if winner was unopposed
                 electors = pc_year_data.get('Electors') or {}
+                votes_meta = pc_year_data.get('Votes') # can be None
+                
                 voters_general = voters.get('General', {}) if voters else {}
                 electors_general = electors.get('General', {}) or {}
                 voters_total_dict = voters.get('Total', {}) if voters else {}
                 
-                # default to 0 if None
                 men_voters = voters_general.get('Men') or 0
                 men_electors = electors_general.get('Men') or 1 # use 1 to avoid div/0
                 
@@ -80,9 +112,22 @@ class ElectionDataProcessor:
                 
                 winner_votes = (result.get('Winner', {}) or {}).get('Votes') or 0
                 
-                polling_percent = 0
+                # handle unopposed cases
+                runner_up_data = result.get('Runner-Up') # Can be None
+                runner_up_votes = 0
+                runner_up_party_name = 'None (Unopposed)'
+                if runner_up_data:
+                    runner_up_votes = runner_up_data.get('Votes') or 0
+                    runner_up_party_name = runner_up_data.get('Party')
+                total_valid_votes = 0
+                if votes_meta:
+                    total_valid_votes = votes_meta.get('Total Valid Votes Polled', 0)
+                
+                total_electors = (electors.get('Total', {}) or {}).get('Total', 1)
+
+                polling_percent = 100
                 if voters and voters.get('POLLING PERCENTAGE'):
-                    polling_percent = voters.get('POLLING PERCENTAGE').get('Total', 0)
+                    polling_percent = voters.get('POLLING PERCENTAGE').get('Total', 100)
 
                 entry = {
                     'year': year,
@@ -93,22 +138,29 @@ class ElectionDataProcessor:
                     'total_voter_turnout': polling_percent,
                     
                     'male_voter_turnout': (men_voters * 100 / men_electors) 
-                        if men_electors > 0 else 0,
+                        if men_electors > 0 and men_voters > 0 else 100,
                         
                     'female_voter_turnout': (women_voters * 100 / women_electors) 
-                        if women_electors > 0 else 0,
+                        if women_electors > 0 and women_voters > 0 else 100,
                         
-                    'winner_party': (result.get('Winner', {}) or {}).get('Party'),
+                    'party_of_winner': (result.get('Winner', {}) or {}).get('Party'),
                     
                     'margin': (margin_val * 100 / total_polled) 
-                        if total_polled > 0 else 0,
+                        if total_polled > 0 else 100,
                         
                     'vote_share_of_winner': (winner_votes * 100 / total_polled) 
-                        if total_polled > 0 else 0,
+                        if total_polled > 0 else 100,
                         
                     'gender_of_winner': self._get_candidate_detail(pc, year, 'Gender'),
                     'category_of_winner': self._get_candidate_detail(pc, year, 'Category'),
-                    'nota_vote_share': self._find_nota_vote_share(pc_year_data)
+                    'nota_vote_share': self._find_nota_vote_share(pc_year_data),
+                    
+                    'age_of_winner': self._get_candidate_detail(pc, year, 'Age'),
+                    'runner_up_party': runner_up_party_name,
+                    'true_mandate': (winner_votes * 100 / total_electors) 
+                        if total_electors > 0 and winner_votes > 0 else 0,
+                    'vote_splitting_index': ((winner_votes + runner_up_votes) * 100 / total_valid_votes) 
+                        if total_valid_votes > 0 else 100
                 }
                 data_list.append(entry)
 
@@ -116,26 +168,10 @@ class ElectionDataProcessor:
         if pc_df.empty:
             return pc_df
 
-        seats_by_party_per_year = {}
-        for year in ELECTION_YEARS:
-            seats_by_party_per_year[year] = {}
-        for _, row in pc_df.iterrows():
-            party = row['winner_party']
-            year = row['year']
-            if party:
-                current_counts = seats_by_party_per_year[year]
-                current_counts[party] = current_counts.get(party, 0) + 1     
-        cleaned_party_list = []
-        for _, row in pc_df.iterrows():
-            party = row['winner_party']
-            year = row['year']
-            party_count = seats_by_party_per_year[year].get(party, 0)
-            
-            if party and party_count <= 5 and party != 'IND':
-                cleaned_party_list.append('Others')
-            else:
-                cleaned_party_list.append(party)
-        pc_df['party_of_winner'] = cleaned_party_list 
+        # clean both winner and runner-up party names
+        self._clean_party_names(pc_df, 'party_of_winner')
+        self._clean_party_names(pc_df, 'runner_up_party')
+ 
         pc_df.set_index(['year', 'pc_id'], inplace=True)
         pc_df.sort_index(inplace=True)
 
@@ -215,19 +251,23 @@ plot_configs = [
     {"id": "margin", "title": "Winning Margins", "legend_label": "Winning Margin (%)", "type": PlotType.MAP_CONTINUOUS},
     {"id": "vote_share_of_winner", "title": "Vote Share of Winner", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
     {"id": "nota_vote_share", "title": "NOTA Vote Share", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "age_of_winner", "title": "Age of Winner", "legend_label": "Age (Years)", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "runner_up_party", "title": "Runner-Up Party", "legend_label": "Party", "type": PlotType.MAP_CATEGORICAL},
+    {"id": "true_mandate", "title": "True Mandate (Winner Votes / Total Electors)", "legend_label": "% of Total Electorate", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "vote_splitting_index", "title": "Vote Consolidation (Top 2 Candidates)", "legend_label": "% of Valid Votes", "type": PlotType.MAP_CONTINUOUS},
 ]
 
 if not pc_df.empty:
     for year in ELECTION_YEARS:
         FIGS[year] = {}
         
-        # check if year exists in the index
         if year not in pc_df.index.get_level_values('year'):
             print(f"No data for year {year}, skipping.")
             continue
             
         year_df = pc_df.loc[year].reset_index()
         for config in plot_configs:
+            print(f'Generating plot for {config["title"]} in {year}...')
             config_with_year = config.copy()
             config_with_year['title'] = f"{config['title']}"
             
