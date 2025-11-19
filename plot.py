@@ -246,16 +246,16 @@ plot_configs = [
     {"id": "male_voter_turnout", "title": "Male Voter Turnout", "legend_label": "Voter Turnout (%)", "type": PlotType.MAP_CONTINUOUS},
     {"id": "female_voter_turnout", "title": "Female Voter Turnout", "legend_label": "Voter Turnout (%)", "type": PlotType.MAP_CONTINUOUS},
     {"id": "category", "title": "Seats by Reservation Category", "legend_label": "Category", "type": PlotType.MAP_CATEGORICAL},
+    {"id": "party_of_winner", "title": "Winners by Party", "legend_label": "Party", "type": PlotType.MAP_CATEGORICAL},
+    {"id": "runner_up_party", "title": "Runner-Up Party", "legend_label": "Party", "type": PlotType.MAP_CATEGORICAL},
     {"id": "gender_of_winner", "title": "Winners by Gender", "legend_label": "Gender", "type": PlotType.MAP_CATEGORICAL},
     {"id": "category_of_winner", "title": "Winners by Category", "legend_label": "Category", "type": PlotType.MAP_CATEGORICAL},
-    {"id": "party_of_winner", "title": "Winners by Party", "legend_label": "Party", "type": PlotType.MAP_CATEGORICAL},
+    {"id": "age_of_winner", "title": "Age of Winner", "legend_label": "Age (Years)", "type": PlotType.MAP_CONTINUOUS},
     {"id": "margin", "title": "Winning Margins", "legend_label": "Winning Margin (%)", "type": PlotType.MAP_CONTINUOUS},
     {"id": "vote_share_of_winner", "title": "Vote Share of Winner", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
-    {"id": "nota_vote_share", "title": "NOTA Vote Share", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
-    {"id": "age_of_winner", "title": "Age of Winner", "legend_label": "Age (Years)", "type": PlotType.MAP_CONTINUOUS},
-    {"id": "runner_up_party", "title": "Runner-Up Party", "legend_label": "Party", "type": PlotType.MAP_CATEGORICAL},
     {"id": "true_mandate", "title": "True Mandate (Winner Votes / Total Electors)", "legend_label": "% of Total Electorate", "type": PlotType.MAP_CONTINUOUS},
     {"id": "vote_splitting_index", "title": "Vote Consolidation (Top 2 Candidates)", "legend_label": "% of Valid Votes", "type": PlotType.MAP_CONTINUOUS},
+    {"id": "nota_vote_share", "title": "NOTA Vote Share", "legend_label": "Vote share (%)", "type": PlotType.MAP_CONTINUOUS},
 ]
 
 if not pc_df.empty:
