@@ -22,77 +22,85 @@ trend_options = [{'label': fig['layout']['title']['text'].replace('Trend: ', '')
                  for key, fig in TREND_FIGS.items()]
 default_trend = trend_options[0]['value'] if trend_options else None
 
-app = dash.Dash(__name__)
+# TailwindCSS for styling, fallback to no styling if remote loading fails
+try:
+    app = dash.Dash(__name__, external_scripts=['https://cdn.tailwindcss.com'])
+except:
+    app = dash.Dash(__name__)
 
 # define HTML layout
-app.layout = html.Div(children=[
+app.layout = html.Div(className="min-h-screen bg-slate-50 font-sans p-4 md:p-8", children=[
     html.H1(
-        "Indian General Election Dashboard (2009-2024)",
-        style={'textAlign': 'center', 'color': '#333', 'padding': '10px'}
+        "Indian General Election Visualization Dashboard (2009-2024)",
+        className="text-3xl md:text-4xl font-extrabold text-center text-slate-800 mb-8 drop-shadow-sm"
     ),
     
-    dcc.Tabs(id="view-tabs", value='tab-maps', children=[
+    dcc.Tabs(id="view-tabs", value='tab-maps', className="max-w-7xl mx-auto", colors={"border": "#cbd5e1", "primary": "#2563eb", "background": "#f1f5f9"}, children=[
         # tab for constituency maps
-        dcc.Tab(label='Constituency Maps', value='tab-maps', children=[
-            html.Div([
-                html.Br(),
-                html.Div([
-                    html.Label("Select Year:", style={'font-weight': 'bold'}),
-                    dcc.Dropdown(
-                        id='year-dropdown',
-                        options=year_options,
-                        value=default_year,
-                        clearable=False,
-                        style={'width': '80%', 'margin': '10px auto'}
-                    ),
-                ], style={'textAlign': 'center'}),
+        dcc.Tab(label='Constituency Maps', value='tab-maps', className="text-slate-600 font-medium text-lg", selected_className="bg-white text-blue-600 font-bold border-t-2 border-blue-600", children=[
+            html.Div(className="bg-white p-6 rounded-b-xl shadow-lg border border-slate-200", children=[
+                html.Div(className="grid md:grid-cols-2 gap-6 mb-6 max-w-5xl mx-auto", children=[
+                    html.Div([
+                        html.Label("Select Year:", className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide"),
+                        dcc.Dropdown(
+                            id='year-dropdown',
+                            options=year_options,
+                            value=default_year,
+                            clearable=False,
+                            className="text-slate-800"
+                        ),
+                    ]),
+                    
+                    html.Div([
+                        html.Label("Select Data Point to Visualize:", className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide"),
+                        dcc.Dropdown(
+                            id='plot-dropdown',
+                            options=[],
+                            value=None,
+                            clearable=False,
+                            className="text-slate-800"
+                        ),
+                    ]),
+                ]),
                 
-                html.Div([
-                    html.Label("Select Data Point to Visualize:"),
-                    dcc.Dropdown(
-                        id='plot-dropdown',
-                        options=[],
-                        value=None,
-                        clearable=False,
-                        style={'width': '80%', 'margin': '10px auto'}
-                    ),
-                ], style={'textAlign': 'center'}),
-                
-                dcc.Graph(
-                    id='map-graph', 
-                    style={
-                        'border': '1px solid lightgray', 
-                        'margin': '20px auto', 
-                        'width': '95%'
-                    }, 
-                    config={'displayModeBar': False}
+                # display map graph with loading component
+                dcc.Loading(
+                    id="loading-map",
+                    type="default",
+                    color="#2563eb",
+                    children=dcc.Graph(
+                        id='map-graph', 
+                        className="w-full h-[75vh] border border-slate-200 rounded-lg shadow-inner bg-slate-50", 
+                        config={'displayModeBar': False}
+                    )
                 )
             ])
         ]),
 
         # tab for national trends
-        dcc.Tab(label='National Trends', value='tab-trends', children=[
-             html.Div([
-                html.Br(),
-                html.Div([
-                    html.Label("Select Metric for Trend Analysis:", style={'font-weight': 'bold'}),
+        dcc.Tab(label='National Trends', value='tab-trends', className="text-slate-600 font-medium text-lg", selected_className="bg-white text-blue-600 font-bold border-t-2 border-blue-600", children=[
+             html.Div(className="bg-white p-6 rounded-b-xl shadow-lg border border-slate-200", children=[
+                html.Div(className="max-w-3xl mx-auto mb-8", children=[
+                    html.Label("Select Metric for Trend Analysis:", className="block text-sm font-bold text-slate-700 mb-2 text-center uppercase tracking-wide"),
                     dcc.Dropdown(
                         id='trend-dropdown',
                         options=trend_options,
                         value=default_trend,
                         clearable=False,
-                        style={'width': '80%', 'margin': '10px auto'}
+                        className="text-slate-800 shadow-sm"
                     ),
-                ], style={'textAlign': 'center'}),
+                ]),
                 
-                dcc.Graph(
-                    id='trend-graph', 
-                    style={
-                        'border': '1px solid lightgray', 
-                        'margin': '20px auto', 
-                        'width': '95%'
-                    }, 
-                    config={'displayModeBar': False}
+                # display trend graph with loading component
+                dcc.Loading(
+                    id="loading-trend",
+                    type="default",
+                    color="#2563eb",
+                    children=dcc.Graph(
+                        id='trend-graph', 
+                        className="w-full h-[60vh] border border-slate-200 rounded-lg shadow-inner bg-slate-50 p-2", 
+                        config={'displayModeBar': False}
+                    )
                 )
             ])
         ])
