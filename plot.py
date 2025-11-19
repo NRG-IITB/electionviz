@@ -11,6 +11,7 @@ GEOJSON_FILE_PATH = 'data/india_parliamentary_constituencies_2024.geojson'
 ELECTION_DATA_FILE_PATH = 'data/2009-2024.json'
 ELECTION_YEARS = ['2009', '2019', '2024'] # skip 2014 for now
 FIGS = {}
+TREND_FIGS = {}
 
 class ElectionDataProcessor:
     def __init__(self, election_data_path, geojson_path):
@@ -267,7 +268,7 @@ if not pc_df.empty:
             
         year_df = pc_df.loc[year].reset_index()
         for config in plot_configs:
-            print(f'Generating plot for {config["title"]} in {year}...')
+            print(f'Generating MAP for {config["title"]} in {year}...')
             config_with_year = config.copy()
             config_with_year['title'] = f"{config['title']}"
             
@@ -281,7 +282,57 @@ if not pc_df.empty:
             fig.plot_fig(year_df, config['id'])
             FIGS[year][config['id']] = fig
 
-# if code is run as a script, print success message
+def generate_trend_figures():
+    print("Generating TREND figures...")
+    if pc_df.empty:
+        return
+
+    # reset index to make 'year' a column for grouping
+    flat_df = pc_df.reset_index()
+
+    for config in plot_configs:
+        col_id = config['id']
+        title = config['title']
+
+        common_args = {
+            'x': 'year',
+            'markers': True
+        }
+        
+        # for continuous/numeric columns - average line plot
+        if config['type'] == PlotType.MAP_CONTINUOUS:
+            # group by year and calculate mean
+            trend_df = flat_df.groupby('year')[col_id].mean().reset_index()
+            
+            fig = px.line(
+                **common_args, 
+                data_frame=trend_df,
+                y=col_id, 
+                title=f"Trend: Average {title} (National)",
+                labels={col_id: f"Avg {config['legend_label']}"}
+            )
+            fig.update_traces(line={'width': 3})
+        # for categorical columns - count/composition line plot
+        elif config['type'] == PlotType.MAP_CATEGORICAL:
+            # group by year and category, then count unique PC IDs (seats)
+            trend_df = flat_df.groupby(['year', col_id]).size().reset_index(name='Seat Count')
+            
+            fig = px.line(
+                **common_args, 
+                data_frame=trend_df,
+                y='Seat Count', 
+                color=col_id,
+                title=f"Trend: {title} Composition",
+                labels={col_id: f"{config['legend_label']}"}
+            )
+            fig.update_traces(line={'width': 3})
+        else:
+            continue
+
+        fig.update_layout(height=500, xaxis_type='category') # treat years as categories
+        TREND_FIGS[col_id] = fig
+
+generate_trend_figures()
+
 if __name__ == '__main__':
     print('All figures generated successfully.')
-    print('Import this module to access the FIGS dictionary (nested by year + "all_years").')

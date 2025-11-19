@@ -6,7 +6,7 @@ Usage: python3 app.py
 import dash
 from dash import dcc, html, callback
 from dash.dependencies import Input, Output
-from plot import FIGS, ELECTION_YEARS 
+from plot import FIGS, ELECTION_YEARS, TREND_FIGS
 
 year_options = []
 default_year = None
@@ -17,46 +17,86 @@ if ELECTION_YEARS and FIGS:
 else:
     print("Warning: No data found in plot.py. FIGS or ELECTION_YEARS is empty.")
 
+# extract options for the trend dropdown
+trend_options = [{'label': fig['layout']['title']['text'].replace('Trend: ', ''), 'value': key} 
+                 for key, fig in TREND_FIGS.items()]
+default_trend = trend_options[0]['value'] if trend_options else None
+
 app = dash.Dash(__name__)
 
 # define HTML layout
 app.layout = html.Div(children=[
     html.H1(
-        "Indian General Election Results (2009-2024)",
+        "Indian General Election Dashboard (2009-2024)",
         style={'textAlign': 'center', 'color': '#333', 'padding': '10px'}
     ),
     
-    html.Div([
-        html.Label("Select Year:", style={'font-weight': 'bold'}),
-        dcc.Dropdown(
-            id='year-dropdown',
-            options=year_options,
-            value=default_year,
-            clearable=False,
-            style={'width': '80%', 'margin': '10px auto'}
-        ),
-    ], style={'textAlign': 'center'}),
-    
-    html.Div([
-        html.Label("Select Data Point to Visualize:"),
-        dcc.Dropdown(
-            id='plot-dropdown',
-            options=[],
-            value=None,
-            clearable=False,
-            style={'width': '80%', 'margin': '10px auto'}
-        ),
-    ], style={'textAlign': 'center'}),
-    
-    dcc.Graph(
-        id='map-graph', 
-        style={
-            'border': '1px solid lightgray', 
-            'margin': '20px auto', 
-            'width': '95%'
-        }, 
-        config={'displayModeBar': False}
-    )
+    dcc.Tabs(id="view-tabs", value='tab-maps', children=[
+        # tab for constituency maps
+        dcc.Tab(label='Constituency Maps', value='tab-maps', children=[
+            html.Div([
+                html.Br(),
+                html.Div([
+                    html.Label("Select Year:", style={'font-weight': 'bold'}),
+                    dcc.Dropdown(
+                        id='year-dropdown',
+                        options=year_options,
+                        value=default_year,
+                        clearable=False,
+                        style={'width': '80%', 'margin': '10px auto'}
+                    ),
+                ], style={'textAlign': 'center'}),
+                
+                html.Div([
+                    html.Label("Select Data Point to Visualize:"),
+                    dcc.Dropdown(
+                        id='plot-dropdown',
+                        options=[],
+                        value=None,
+                        clearable=False,
+                        style={'width': '80%', 'margin': '10px auto'}
+                    ),
+                ], style={'textAlign': 'center'}),
+                
+                dcc.Graph(
+                    id='map-graph', 
+                    style={
+                        'border': '1px solid lightgray', 
+                        'margin': '20px auto', 
+                        'width': '95%'
+                    }, 
+                    config={'displayModeBar': False}
+                )
+            ])
+        ]),
+
+        # tab for national trends
+        dcc.Tab(label='National Trends', value='tab-trends', children=[
+             html.Div([
+                html.Br(),
+                html.Div([
+                    html.Label("Select Metric for Trend Analysis:", style={'font-weight': 'bold'}),
+                    dcc.Dropdown(
+                        id='trend-dropdown',
+                        options=trend_options,
+                        value=default_trend,
+                        clearable=False,
+                        style={'width': '80%', 'margin': '10px auto'}
+                    ),
+                ], style={'textAlign': 'center'}),
+                
+                dcc.Graph(
+                    id='trend-graph', 
+                    style={
+                        'border': '1px solid lightgray', 
+                        'margin': '20px auto', 
+                        'width': '95%'
+                    }, 
+                    config={'displayModeBar': False}
+                )
+            ])
+        ])
+    ])
 ])
 
 @callback(
@@ -64,7 +104,7 @@ app.layout = html.Div(children=[
     Output('plot-dropdown', 'value'),
     Input('year-dropdown', 'value')
 )
-def update_plot_options(selected_year):
+def update_map_options(selected_year):
     if not selected_year:
         return [], None
     
@@ -95,14 +135,22 @@ def update_plot_options(selected_year):
     Input('year-dropdown', 'value'),
     Input('plot-dropdown', 'value')
 )
-def update_graph(selected_year, selected_plot_id):
+def update_map_graph(selected_year, selected_plot_id):
     if not selected_year or not selected_plot_id:
         return {}
     year_key = selected_year
     if year_key in FIGS and selected_plot_id in FIGS[year_key]:
         return FIGS[year_key][selected_plot_id].fig
     
-    # return empty figure if plot id not found
+    return {}
+
+@callback(
+    Output('trend-graph', 'figure'),
+    Input('trend-dropdown', 'value')
+)
+def update_trend_graph(selected_metric):
+    if selected_metric in TREND_FIGS:
+        return TREND_FIGS[selected_metric]
     return {}
 
 if __name__ == '__main__':
