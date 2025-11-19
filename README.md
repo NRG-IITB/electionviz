@@ -2,15 +2,15 @@
 
 ## Introduction
 
-ElectionViz is a Python-based web application designed to provide insightful visualizations of election data. The application uses interactive maps and plots to represent election results, making it easier to analyze and understand electoral trends and outcomes across different constituencies/years.
+ElectionViz is a Python-based web application designed to provide insightful visualizations of election data. The application uses interactive maps and plots to represent election results, allowing easy analysis of electoral trends and outcomes across different constituencies/years.
 
-The application is cross-platform as it does not rely on any OS-specific APIs. However, the installation and execution commands provided here are for a Linux-based environment.
+The application was written entirely using Python, and is cross-platform. Note that the installation and execution commands provided here are for a Linux-based environment.
 
 ## Features
 
 - **Interactive Maps**: Analyze constituency-level results or aggregate trends over the years.
 - **Multiple Data Views**: Explore election data through a rich set of visualizations.
-- **Performance Optimized**: Pre-rendered maps ensure a smooth and responsive user experience.
+- **Performance Optimized**: Server-side pre-rendered maps ensure a smooth and responsive user experience.
 
 ## Setup and Installation
 
@@ -39,7 +39,7 @@ Follow these steps to set up the project on your local machine.
 
 ## Running the Application
 
-Once the setup is complete, you can run the application. Set `DEBUG_MODE=false` for general use to reduce logging and improve startup time.
+Set `DEBUG_MODE=false` for general use to reduce logging and improve startup time.
 
 - General Use:
     ```bash
@@ -50,7 +50,7 @@ Once the setup is complete, you can run the application. Set `DEBUG_MODE=false` 
     DEBUG_MODE=true python3 app.py
     ```
 
-The application will start, and you can access it by navigating to `http://127.0.0.1:8050` in your web browser.
+The application will run at `http://127.0.0.1:8050` by default.
 
 ## Acknowledgements/Disclaimer
 
