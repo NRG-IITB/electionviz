@@ -32,6 +32,8 @@ try:
 except:
     app = dash.Dash(__name__)
 
+app.title = "ElectionViz"
+
 # define HTML layout
 app.layout = html.Div(className="min-h-screen bg-slate-50 font-sans p-4 md:p-8", children=[
     html.H1(
