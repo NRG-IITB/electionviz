@@ -7,6 +7,10 @@ import dash
 from dash import dcc, html, callback
 from dash.dependencies import Input, Output
 from plot import FIGS, ELECTION_YEARS, TREND_FIGS
+import os
+
+# read DEBUG_MODE from env-vars, True by default
+DEBUG_MODE = os.environ.get('DEBUG_MODE', 'True').lower() in ('1', 'true', 'yes')
 
 year_options = []
 default_year = None
@@ -162,5 +166,4 @@ def update_trend_graph(selected_metric):
     return {}
 
 if __name__ == '__main__':
-    print("Starting the app...")
-    app.run(debug=True)
+    app.run(debug=DEBUG_MODE)

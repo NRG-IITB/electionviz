@@ -6,6 +6,10 @@ from enum import Enum
 import plotly.express as px
 import json
 import pandas as pd
+import os
+
+# read DEBUG_MODE from env-vars, True by default
+DEBUG_MODE = os.environ.get('DEBUG_MODE', 'True').lower() in ('1', 'true', 'yes')
 
 GEOJSON_FILE_PATH = 'data/india_parliamentary_constituencies_2024.geojson'
 ELECTION_DATA_FILE_PATH = 'data/2009-2024.json'
@@ -263,12 +267,14 @@ if not pc_df.empty:
         FIGS[year] = {}
         
         if year not in pc_df.index.get_level_values('year'):
-            print(f"No data for year {year}, skipping.")
+            if DEBUG_MODE:
+                print(f"No data for year {year}, skipping.")
             continue
             
         year_df = pc_df.loc[year].reset_index()
         for config in plot_configs:
-            print(f'Generating MAP for {config["title"]} in {year}...')
+            if DEBUG_MODE:
+                print(f'Generating MAP for {config["title"]} in {year}...')
             config_with_year = config.copy()
             config_with_year['title'] = f"{config['title']}"
             
@@ -276,14 +282,16 @@ if not pc_df.empty:
             
             # check for missing data
             if config['id'] not in year_df.columns or year_df[config['id']].isnull().all():
-                print(f"Warning: Column '{config['id']}' not found or is all null for {year}. Skipping this plot.")
+                if DEBUG_MODE:
+                    print(f"Warning: Column '{config['id']}' not found or is all null for {year}. Skipping this plot.")
                 continue
 
             fig.plot_fig(year_df, config['id'])
             FIGS[year][config['id']] = fig
 
 def generate_trend_figures():
-    print("Generating TREND figures...")
+    if DEBUG_MODE:
+        print("Generating TREND figures...")
     if pc_df.empty:
         return
 
