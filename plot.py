@@ -223,15 +223,23 @@ class DataPoint():
             }
 
             if self.type == PlotType.MAP_CATEGORICAL:
+                # fetch all unique values from the global dataframe to ensure consistent coloring across years
+                global_cats = sorted(list(set(pc_df[column].dropna().tolist())))
+                
+                # create a consistent map of colors based on the global unique values
+                colors = px.colors.qualitative.Light24
+                color_map = {cat: colors[i % len(colors)] for i, cat in enumerate(global_cats)}
+                
                 fig = px.choropleth(
                     **common_args,
-                    category_orders={column: sorted(list(set(df[column].dropna().tolist())))},
-                    color_discrete_sequence=px.colors.qualitative.Light24,
+                    category_orders={column: global_cats},
+                    color_discrete_map=color_map
                 )
             elif self.type == PlotType.MAP_CONTINUOUS or self.type == PlotType.MAP_DISCRETE:
                 fig = px.choropleth(
                     **common_args,
                     color_continuous_scale="YlGnBu",
+                    range_color=[0, 100]
                 )
             else:
                 raise ValueError("Invalid PlotType")
