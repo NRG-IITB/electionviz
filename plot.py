@@ -41,13 +41,13 @@ class ElectionDataProcessor:
     def _find_nota_vote_share(self, pc_year_data):
         try:
             for candidate in pc_year_data.get('Candidates', []):
-                if candidate.get('Candidate Name') == 'NOTA':
+                if candidate.get('Candidate Name') == 'NOTA' or candidate.get('Candidate Name').lower() == 'none of the above':
                     votes_data = candidate.get('% of Votes Secured') or {} # '% of Votes Secured' can be None if winner was unopposed
-                    share = votes_data.get('Over Total Votes Polled In Constituency', 0)
+                    share = votes_data.get('Over Total Votes Polled In Constituency', None)
                     return share
         except (KeyError, TypeError, AttributeError):
-            return 0 # return 0 if data is corrupted or missing
-        return 0
+            return None # return None if data is corrupted or missing
+        return None
     
     # helper function to clean party names
     def _clean_party_names(self, df, column_name):
@@ -167,7 +167,18 @@ class ElectionDataProcessor:
                     'vote_splitting_index': ((winner_votes + runner_up_votes) * 100 / total_valid_votes) 
                         if total_valid_votes > 0 else 100
                 }
+
+                # handle missing data for Odisha/Chattisgarh in 2014
+                if year == '2014' and (pc['State_UT'] == 'Odisha' or pc['State_UT'] == 'Chhattisgarh'):
+                    entry['nota_vote_share'] = None
+                    entry['true_mandate'] = None
+                    entry['vote_share_of_winner'] = None
+                    entry['vote_splitting_index'] = None
                 data_list.append(entry)
+
+                # allow 0 NOTA vote share for Surat in 2024
+                if year == '2024' and pc['Constituency'] == 'Surat':
+                    entry['nota_vote_share'] = 0
 
         pc_df = pd.DataFrame(data_list)
         if pc_df.empty:
@@ -281,9 +292,9 @@ if not pc_df.empty:
             fig = DataPoint(**config_with_year, geojson_data=data_processor.geojson_data)
             
             # check for missing data
-            if config['id'] not in year_df.columns or year_df[config['id']].isnull().all():
+            if config['id'] not in year_df.columns or year_df[config['id']].isnull().any():
                 if DEBUG_MODE:
-                    print(f"Warning: Column '{config['id']}' not found or is all null for {year}. Skipping this plot.")
+                    print(f"Warning: Column '{config['id']}' not found or has null values for {year}. Skipping this plot.")
                 continue
 
             fig.plot_fig(year_df, config['id'])
@@ -304,7 +315,8 @@ def generate_trend_figures():
 
         common_args = {
             'x': 'year',
-            'markers': True
+            'markers': True,
+            'category_orders': {'year': ELECTION_YEARS}
         }
         
         # for continuous/numeric columns - average line plot
