@@ -13,7 +13,7 @@ DEBUG_MODE = os.environ.get('DEBUG_MODE', 'True').lower() in ('1', 'true', 'yes'
 
 GEOJSON_FILE_PATH = 'data/india_parliamentary_constituencies_2024.geojson'
 ELECTION_DATA_FILE_PATH = 'data/2009-2024.json'
-ELECTION_YEARS = ['2009', '2019', '2024'] # skip 2014 for now
+ELECTION_YEARS = ['2009', '2014', '2019', '2024']
 FIGS = {}
 TREND_FIGS = {}
 
