@@ -7,20 +7,21 @@ import plotly.express as px
 import json
 import pandas as pd
 import os
+from db import ElectionDB
 
 # read DEBUG_MODE from env-vars, True by default
 DEBUG_MODE = os.environ.get('DEBUG_MODE', 'True').lower() in ('1', 'true', 'yes')
 
 GEOJSON_FILE_PATH = 'data/india_parliamentary_constituencies_2024.geojson'
-ELECTION_DATA_FILE_PATH = 'data/2009-2024.json'
 ELECTION_YEARS = ['2009', '2014', '2019', '2024']
 FIGS = {}
 TREND_FIGS = {}
 
 class ElectionDataProcessor:
-    def __init__(self, election_data_path, geojson_path):
-        self.geojson_data = self._load_data(geojson_path)
-        self.raw_data = self._load_data(election_data_path)
+    def __init__(self, geojson_path):
+        self.geojson_data = self._load_geojson(geojson_path)
+        self.db = ElectionDB()
+        self.raw_data = self._load_data_from_db()
         self.pc_df = self._prepare_dataframe()
 
     # helper function to get candidate details
@@ -80,13 +81,21 @@ class ElectionDataProcessor:
         
         df[column_name] = cleaned_list
 
-    # helper function to load (Geo)JSON data
-    def _load_data(self, file_path):
+    # helper function to load GeoJSON data
+    def _load_geojson(self, file_path):
         try:
             with open(file_path, 'r') as f:
                 return json.load(f)
         except Exception as e:
             raise e
+
+    # function to load data from database
+    def _load_data_from_db(self):
+        data_list = []
+        for constituency_data in self.db.get_data_for_years(ELECTION_YEARS):
+            data_list.append(constituency_data)
+        
+        return data_list
 
     def _prepare_dataframe(self):
         data_list = []
@@ -257,10 +266,7 @@ class DataPoint():
 
 
 # load data files and prepare DataFrame
-data_processor = ElectionDataProcessor(
-    ELECTION_DATA_FILE_PATH, 
-    GEOJSON_FILE_PATH
-)
+data_processor = ElectionDataProcessor(GEOJSON_FILE_PATH)
 pc_df = data_processor.pc_df
 
 # create DataPoint instances for each plot and generate figures
